@@ -1,0 +1,27 @@
+# One command local stack:  docker compose up --build   →  http://localhost:8000
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: farmfresh
+      POSTGRES_PASSWORD: farmfresh
+      POSTGRES_DB: farmfresh
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U farmfresh"]
+      interval: 3s
+      retries: 20
+  web:
+    build: .
+    ports: ["8000:8000"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://farmfresh:farmfresh@db:5432/farmfresh
+      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-change-me}
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  pgdata:
