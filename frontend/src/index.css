@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Mandi palette: blue tarpaulin, turmeric, leaf, chilli on a cool white. */
+  --color-paper: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-ink: #17202c;
+  --color-muted: #5b6676;
+  --color-faint: #8a94a3;
+  --color-line: #e2e6ec;
+  --color-tarp: #2747a8;
+  --color-tarp-deep: #19306f;
+  --color-tarp-soft: #e8edfa;
+  --color-turmeric: #f2b632;
+  --color-turmeric-soft: #fdf3d6;
+  --color-leaf: #1f7a4a;
+  --color-leaf-soft: #e3f3ea;
+  --color-chilli: #c4372c;
+  --color-chilli-soft: #fbe8e6;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+  line-height: 1.12;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+:focus-visible {
+  outline: 2.5px solid var(--color-tarp);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Rate board rows flip in once on load — the one orchestrated motion on the site. */
+@keyframes flip-in {
+  from { transform: rotateX(-80deg); opacity: 0; }
+  to { transform: rotateX(0); opacity: 1; }
+}
+.board-row {
+  transform-origin: top;
+  animation: flip-in 520ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+.input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.95rem;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.input:hover { border-color: #c9d0da; }
+.input:focus { outline: none; border-color: var(--color-tarp); box-shadow: 0 0 0 3px #2747a826; }
+.input[aria-invalid="true"] { border-color: var(--color-chilli); }
+
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; }
