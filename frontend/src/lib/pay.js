@@ -16,7 +16,7 @@ function loadRazorpay() {
   return scriptPromise;
 }
 
-// Starts checkout. Resolves "paid" | "dismissed"; throws on failure.
+// Starts checkout. Resolves "paid" | "refunded" | "dismissed"; throws on failure.
 // For demo mode it returns the session so the UI can show its own simulated sheet.
 export async function startPayment(orderId) {
   const session = await api(`/payments/orders/${orderId}`, { method: "POST" });
@@ -34,8 +34,9 @@ export async function startPayment(orderId) {
       theme: { color: "#2747A8" },
       handler: async (resp) => {
         try {
-          await api("/payments/verify", { method: "POST", body: resp });
-          resolve({ paid: true });
+          const r = await api("/payments/verify", { method: "POST", body: resp });
+          // Not PAID means the order was cancelled meanwhile and the server refunded the payment.
+          resolve(r.payment_status === "PAID" ? { paid: true } : { refunded: true });
         } catch (e) {
           reject(e);
         }
