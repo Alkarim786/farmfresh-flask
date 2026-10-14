@@ -71,3 +71,23 @@ def test_listing_photo_upload_and_serve(client, api):
     bad = client.post("/api/v1/listings", headers=api.h(f), json={"crop": "A", "qty_total": 1, "price": 1,
                                                                   "location": "X", "images": ["data:text/html;base64,PGI+"]})
     assert bad.status_code == 400
+
+
+def test_bad_query_and_body_values_are_400_not_500(app, client, api):
+    from app.auth import hash_password
+    from app.extensions import db
+    from app.models import Role, User
+    with app.app_context():
+        db.session.add(User(name="Admin", email="admin@test.in", role=Role.ADMIN,
+                            password_hash=hash_password("password123")))
+        db.session.commit()
+    token = client.post("/api/v1/auth/login", json={"email": "admin@test.in", "password": "password123"}).json
+    admin = {"Authorization": f"Bearer {token['access_token']}"}
+    assert client.get("/api/v1/admin/listings?status=bogus", headers=admin).status_code == 400
+    assert client.get("/api/v1/admin/orders?status=bogus", headers=admin).status_code == 400
+    assert client.get("/api/v1/admin/orders?status=pending", headers=admin).status_code == 200
+
+    f = api.register("FARMER")
+    l = api.listing(f)
+    r = client.patch(f"/api/v1/listings/{l['id']}", json={"remove_images": ["abc"]}, headers=api.h(f))
+    assert r.status_code == 400 and r.json["error"]["fields"] == {"remove_images": "invalid"}

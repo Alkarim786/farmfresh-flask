@@ -211,7 +211,10 @@ def update_listing(user, listing_id):
     _apply(l, data, creating=False)
     _save_images(l, data.get("images"))
     if "remove_images" in data:
-        drop = {int(i) for i in data.get("remove_images") or []}
+        try:
+            drop = {int(i) for i in data.get("remove_images") or []}
+        except (TypeError, ValueError):
+            raise APIError("remove_images must be a list of image ids", fields={"remove_images": "invalid"})
         l.images = [img for img in l.images if img.id not in drop]
     if "status" in data:
         new = str(data["status"]).upper()

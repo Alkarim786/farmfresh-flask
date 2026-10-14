@@ -118,6 +118,13 @@ def mark_read(user):
 
 # ---------------------------------------------------------------- admin
 
+def _enum_arg(enum_cls, value: str):
+    try:
+        return enum_cls(value.upper())
+    except ValueError:
+        raise APIError(f"Unknown status {value}")
+
+
 @bp.get("/admin/users")
 @roles_required(Role.ADMIN)
 def admin_users(user):
@@ -160,7 +167,7 @@ def admin_listings(user):
     page, size = page_args()
     q = db.select(Listing).order_by(Listing.created_at.desc())
     if status := request.args.get("status"):
-        q = q.where(Listing.status == ListingStatus(status.upper()))
+        q = q.where(Listing.status == _enum_arg(ListingStatus, status))
     return ok(paginated(q, page, size, listing_json))
 
 
@@ -185,5 +192,5 @@ def admin_orders(user):
     page, size = page_args()
     q = db.select(Order).order_by(Order.created_at.desc())
     if status := request.args.get("status"):
-        q = q.where(Order.status == S(status.upper()))
+        q = q.where(Order.status == _enum_arg(S, status))
     return ok(paginated(q, page, size, lambda o: order_json(o, user)))
