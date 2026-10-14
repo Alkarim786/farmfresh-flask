@@ -12,7 +12,6 @@ const DEMO = [
   ["Farmer", "farmer@farmfresh.demo"],
   ["Buyer", "buyer@farmfresh.demo"],
   ["Transporter", "transport@farmfresh.demo"],
-  ["Admin", "admin@farmfresh.demo"],
 ];
 
 function AuthFrame({ title, sub, children }) {
@@ -65,7 +64,7 @@ export function Login() {
       <div className="mt-6 pt-5 border-t border-line">
         <p className="text-sm font-semibold">Try a demo account</p>
         <p className="text-sm text-muted">Each one is filled with sample orders and listings.</p>
-        <div className="grid grid-cols-2 gap-2 mt-3">
+        <div className="grid grid-cols-3 gap-2 mt-3">
           {DEMO.map(([label, email]) => (
             <Button key={email} variant="secondary" size="sm" disabled={busy}
               onClick={() => submit(null, { email, password: "farmfresh123" })}>

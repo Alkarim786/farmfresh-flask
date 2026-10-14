@@ -17,6 +17,6 @@ COPY --from=web /web/dist ./static
 RUN useradd --create-home appuser && chown -R appuser /app
 USER appuser
 EXPOSE 8000
-# Apply migrations, seed demo data only on an empty database, then serve.
-CMD flask db upgrade && flask seed-if-empty && \
+# Apply migrations, seed demo data only on an empty database, create the admin from env vars, then serve.
+CMD flask db upgrade && flask seed-if-empty && flask ensure-admin && \
     gunicorn wsgi:app --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-2} --threads 4 --timeout 60 --access-logfile -
