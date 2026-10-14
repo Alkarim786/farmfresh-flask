@@ -24,6 +24,11 @@ def check_password(pw: str, hashed: str) -> bool:
     return bcrypt.checkpw(pw.encode(), hashed.encode())
 
 
+# Checked against when the email is unknown, so both login failures take the same bcrypt time
+# and response timing can't reveal which emails have accounts.
+_DUMMY_HASH = hash_password("timing-equaliser-not-a-real-password")
+
+
 def tokens_for(user: User) -> dict:
     claims = {"role": user.role.value}
     return {
@@ -92,7 +97,7 @@ def login():
     password = str(data.get("password", ""))
     user = db.session.scalar(db.select(User).where(User.email == email))
     # Same message for unknown email and wrong password (no account enumeration).
-    if user is None or not check_password(password, user.password_hash):
+    if not check_password(password, user.password_hash if user else _DUMMY_HASH) or user is None:
         raise APIError("Email or password is incorrect", 401, "invalid_credentials")
     if not user.active:
         raise APIError("This account has been suspended. Contact support.", 403, "suspended")
