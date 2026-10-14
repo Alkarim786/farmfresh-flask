@@ -7,3 +7,9 @@ frontend/dist/
 backend/static/
 .DS_Store
 .venv/
+venv/
+instance/
+*.db
+*.sqlite3
+# Local duplicate checkout of this repo
+/farmfresh/
