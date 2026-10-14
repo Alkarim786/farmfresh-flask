@@ -16,12 +16,19 @@ services:
         fromDatabase:
           name: farmfresh-db
           property: connectionString
+      - key: APP_ENV
+        value: production
       - key: SECRET_KEY
         generateValue: true
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: WEB_CONCURRENCY
         value: "2"
+      # Your admin login. Set both in the Render dashboard; the account is created on the next deploy.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
       # Payments: leave blank for demo mode, or paste Razorpay TEST keys in the Render dashboard.
       - key: RAZORPAY_KEY_ID
         sync: false

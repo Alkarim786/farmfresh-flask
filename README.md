@@ -13,7 +13,7 @@ A multi-sided agricultural marketplace: farmers list produce, buyers order direc
 | Transporter | See loads ranked by vehicle fit and service area, quote, mark pickup and delivery, track earnings |
 | Admin | Verify or suspend accounts, hide listings, view platform-wide order value and status |
 
-Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`, `admin@farmfresh.demo`. The login page has one-click buttons for each.
+Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`. The login page has one-click buttons for each. Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
 
 ## Architecture
 
@@ -102,7 +102,8 @@ Tests: `cd backend && pytest -q` (needs the `farmfresh_test` database).
 
 1. Push this repo to GitHub.
 2. In Render: **New → Blueprint**, pick the repo. `render.yaml` creates the Postgres database and the web service, generates secrets, runs migrations and seeds demo data on first boot.
-3. Optional: add Razorpay test keys under the service's **Environment** tab, then redeploy. Without keys the app runs a clearly labelled demo checkout.
+3. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (12+ characters) in the service's **Environment** tab. The admin account is created on the next deploy.
+4. Optional: add Razorpay test keys under the service's **Environment** tab, then redeploy. Without keys the app runs a clearly labelled demo checkout.
 
 Note: Render's free Postgres expires after 30 days; point `DATABASE_URL` at Neon or Supabase for a longer-lived free database.
 

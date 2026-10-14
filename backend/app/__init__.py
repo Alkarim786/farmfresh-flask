@@ -6,7 +6,7 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
 from .common import APIError
-from .config import Config
+from .config import Config, check_production_secrets
 from .extensions import db, jwt, limiter, migrate
 
 STATIC_DIR = os.getenv("FRONTEND_DIST", os.path.join(os.path.dirname(__file__), "..", "static"))
@@ -15,13 +15,15 @@ STATIC_DIR = os.getenv("FRONTEND_DIST", os.path.join(os.path.dirname(__file__), 
 def create_app(config_object=Config) -> Flask:
     app = Flask(__name__, static_folder=None)
     app.config.from_object(config_object)
+    check_production_secrets(app.config)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     limiter.init_app(app)
-    CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
+    if origins := app.config["CORS_ORIGINS"]:
+        CORS(app, resources={r"/api/*": {"origins": [o.strip() for o in origins.split(",")] if origins != "*" else "*"}})
 
     from . import auth, dashboard, listings, orders, payments, prices, transport
     for mod in (auth, listings, orders, transport, payments, prices, dashboard):

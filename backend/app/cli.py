@@ -66,9 +66,11 @@ def _user(name, email, role, **kw):
     return u
 
 
-def seed_demo():
+def seed_demo(with_admin: bool = True):
+    """Demo users share a public password, so a public deploy must not get the demo admin."""
     rnd = random.Random(7)
-    admin = _user("Platform Admin", "admin@farmfresh.demo", Role.ADMIN, verified=True, phone="+91 90000 00000")
+    if with_admin:
+        _user("Platform Admin", "admin@farmfresh.demo", Role.ADMIN, verified=True, phone="+91 90000 00000")
     farmers = [
         _user("Murugan Selvam", "farmer@farmfresh.demo", Role.FARMER, verified=True, phone="+91 94430 11111",
               location="Villupuram, Tamil Nadu", farm_name="Selvam Family Farm"),
@@ -190,7 +192,7 @@ def seed_demo():
     live3 = create_order(buyers[2], [{"listing_id": listings[8].id, "qty": 15}], delivery_mode=DeliveryMode.PICKUP,
                          address=None, note="I'll pick up on Saturday", idempotency_key=None)
     db.session.commit()
-    _ = (admin, live1, live3)
+    _ = (live1, live3)
     return len(listings)
 
 
@@ -208,13 +210,35 @@ def register_cli(app):
 
     @app.cli.command("seed-if-empty")
     def seed_if_empty():
-        """Seed only when the database has no users (safe to run on every deploy)."""
+        """Seed only when the database has no users (safe to run on every deploy).
+
+        The demo admin is skipped unless DEMO_ADMIN=1, because its password is public.
+        """
         if db.session.scalar(db.select(db.func.count(User.id))):
             click.echo("Database already has data; skipping seed.")
             return
         n = generate_sample_prices()
-        m = seed_demo()
+        m = seed_demo(with_admin=os.getenv("DEMO_ADMIN") == "1")
         click.echo(f"Seeded {n} price records and {m} listings.")
+
+    @app.cli.command("ensure-admin")
+    def ensure_admin():
+        """Create the admin from ADMIN_EMAIL / ADMIN_PASSWORD if it doesn't exist yet (safe on every deploy)."""
+        email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+        password = os.getenv("ADMIN_PASSWORD", "")
+        if not email or not password:
+            click.echo("ADMIN_EMAIL / ADMIN_PASSWORD not set; skipping admin bootstrap.")
+            return
+        if len(password) < 12:
+            raise click.ClickException("ADMIN_PASSWORD must be at least 12 characters")
+        if db.session.scalar(db.select(User.id).where(User.email == email)):
+            click.echo(f"Admin {email} already exists.")
+            return
+        from .auth import hash_password
+        db.session.add(User(name="Admin", email=email, role=Role.ADMIN, verified=True,
+                            password_hash=hash_password(password)))
+        db.session.commit()
+        click.echo(f"Admin {email} created.")
 
     @app.cli.command("import-prices")
     @click.option("--state", default="Tamil Nadu")

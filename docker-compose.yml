@@ -20,6 +20,7 @@ services:
     environment:
       DATABASE_URL: postgresql://farmfresh:farmfresh@db:5432/farmfresh
       SECRET_KEY: ${SECRET_KEY:-local-dev-secret-change-me}
+      DEMO_ADMIN: "1"  # local only: seed admin@farmfresh.demo
     depends_on:
       db:
         condition: service_healthy
