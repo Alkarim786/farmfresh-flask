@@ -161,11 +161,12 @@ export default function OrderDetail() {
   const chooseQuote = async (q) => {
     setBusy(`q${q.id}`);
     try {
-      await api(`/transport/quotes/${q.id}/accept`, { method: "POST" });
+      await api(`/transport/quotes/${q.id}/accept`, { method: "POST", body: { fee: q.fee } });
       toast.success(`${q.transporter.name} is booked. Pay to confirm pickup.`);
       reload();
     } catch (e) {
       toast.error(e.message);
+      if (e.code === "quote_changed") reload();
     } finally {
       setBusy(null);
     }

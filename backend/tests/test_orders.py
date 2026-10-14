@@ -24,7 +24,7 @@ def test_full_delivery_lifecycle(client, api):
     q = client.post(f"/api/v1/transport/jobs/{oid}/quotes", headers=api.h(trans),
                     json={"fee": 500, "eta_hours": 6, "vehicle_type": "Mini truck"})
     assert q.status_code == 201
-    acc = client.post(f"/api/v1/transport/quotes/{q.json['id']}/accept", headers=api.h(buyer))
+    acc = client.post(f"/api/v1/transport/quotes/{q.json['id']}/accept", headers=api.h(buyer), json={"fee": "500.00"})
     assert acc.status_code == 200 and acc.json["status"] == "TRANSPORT_ASSIGNED" and acc.json["total"] == "1300.00"
 
     # Can't dispatch before payment
@@ -42,6 +42,24 @@ def test_full_delivery_lifecycle(client, api):
     rv = client.post(f"/api/v1/orders/{oid}/review", headers=api.h(buyer), json={"rating": 5, "comment": "Great"})
     assert rv.status_code == 201
     assert client.post(f"/api/v1/orders/{oid}/review", headers=api.h(buyer), json={"rating": 4}).status_code == 409
+
+
+def test_accepting_a_quote_requires_the_fee_the_buyer_saw(client, api):
+    farmer, buyer, trans = api.register("FARMER"), api.register("BUYER"), api.register("TRANSPORTER")
+    l = api.listing(farmer)
+    oid = api.order(buyer, l["id"], 10).json["id"]
+    api.status(farmer, oid, "ACCEPTED")
+    quote = lambda fee: client.post(f"/api/v1/transport/jobs/{oid}/quotes", headers=api.h(trans),
+                                    json={"fee": fee, "eta_hours": 4})
+    qid = quote(300).json["id"]
+    quote(900)  # transporter raises the fee after the buyer loaded the page
+    accept = lambda fee: client.post(f"/api/v1/transport/quotes/{qid}/accept", headers=api.h(buyer), json={"fee": fee})
+    stale = accept("300.00")
+    assert stale.status_code == 409 and stale.json["error"]["code"] == "quote_changed"
+    assert client.get(f"/api/v1/orders/{oid}", headers=api.h(buyer)).json["status"] == "ACCEPTED"
+    assert client.post(f"/api/v1/transport/quotes/{qid}/accept", headers=api.h(buyer)).status_code == 400
+    ok = accept("900.00")
+    assert ok.status_code == 200 and ok.json["transport_fee"] == "900.00"
 
 
 def test_pickup_flow(client, api):
