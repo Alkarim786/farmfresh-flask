@@ -191,7 +191,9 @@ def create_listing(user):
 
 
 def _owned(user, listing_id) -> Listing:
-    l = db.session.get(Listing, listing_id)
+    # Lock the row: a stock edit reads qty_available, and an order placed in between would
+    # otherwise be overwritten (orders take the same lock in create_order).
+    l = db.session.scalar(db.select(Listing).where(Listing.id == listing_id).with_for_update())
     if l is None:
         raise not_found("Listing")
     if l.farmer_id != user.id:
