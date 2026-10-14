@@ -74,6 +74,15 @@ erDiagram
 - **Explainable transporter matching.** Jobs are ranked by whether the load fits the vehicle's capacity and whether pickup is in the transporter's service area.
 - **Honest price data.** Out of the box the app uses clearly labelled sample mandi data. `flask import-prices` pulls real AGMARKNET reports from data.gov.in when an API key is set, and the UI switches its source label automatically.
 
+## Known tradeoffs
+
+Deliberate simplifications for a single small deployment:
+
+- **Rate limits are per worker.** Without `REDIS_URL` the limiter keeps counts in memory, so with 2 gunicorn workers the login limit is effectively doubled. Set `REDIS_URL` for a shared counter.
+- **Refunds call Razorpay while the order row is locked.** The cancellation and the refund then succeed or fail together. The cost is that a slow gateway holds the lock for that order (only that order) for up to the request timeout.
+- **Logout is client-side.** JWTs are stateless: logging out drops the tokens from the browser, but a stolen refresh token stays valid until it expires (14 days). A token blocklist would close this.
+- **The free Render web service sleeps when idle.** The first request after a quiet spell takes about 30 seconds.
+
 ## Run locally
 
 With Docker:
@@ -86,7 +95,7 @@ Without Docker (Python 3.12+, Node 20+, PostgreSQL running):
 
 ```bash
 cd backend
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 createdb farmfresh && createdb farmfresh_test
 export FLASK_APP=wsgi.py
 flask db upgrade && flask seed
