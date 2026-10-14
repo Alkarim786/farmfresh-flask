@@ -89,8 +89,9 @@ def submit_quote(user, order_id):
     vehicle = req_str(data, "vehicle_type", max_len=60, required=False) or user.vehicle_type or "Vehicle"
     note = req_str(data, "note", max_len=300, required=False)
 
+    # Locked so an edit racing with the buyer's accept waits for it and then sees the decided status.
     q = db.session.scalar(db.select(TransportQuote).where(
-        TransportQuote.order_id == order_id, TransportQuote.transporter_id == user.id))
+        TransportQuote.order_id == order_id, TransportQuote.transporter_id == user.id).with_for_update())
     if q and q.status not in (QuoteStatus.OPEN, QuoteStatus.WITHDRAWN):
         raise APIError("Your quote has already been decided", 409, "closed")
     created = q is None
@@ -124,15 +125,23 @@ def withdraw_quote(user, quote_id):
 @bp.post("/quotes/<int:quote_id>/accept")
 @roles_required(Role.BUYER)
 def accept_quote(user, quote_id):
+    # The buyer confirms the fee they were shown, so a transporter can't raise it just before the accept.
+    expected_fee = req_decimal(body(), "fee", allow_zero=True)
     q = db.session.get(TransportQuote, quote_id)
     if q is None:
         raise not_found("Quote")
-    # Lock the order first; transition() re-reads it under the same lock.
+    # Lock the order first (transition() re-reads it under the same lock), then the quote,
+    # so a concurrent edit or withdrawal of this quote is seen.
     order = db.session.scalar(db.select(Order).where(Order.id == q.order_id).with_for_update())
     if order.buyer_id != user.id:
         raise forbidden("Only the buyer can choose a transporter")
+    q = db.session.scalar(db.select(TransportQuote).where(TransportQuote.id == quote_id)
+                          .with_for_update().execution_options(populate_existing=True))
     if q.status != QuoteStatus.OPEN:
         raise APIError("This quote is no longer available", 409, "closed")
+    if q.fee != expected_fee:
+        raise APIError(f"The transporter changed this quote to ₹{q.fee:,.2f}. Review it and accept again.",
+                       409, "quote_changed")
     if not q.transporter.active:
         raise APIError("This transporter is unavailable", 409, "closed")
     order.transporter_id = q.transporter_id

@@ -127,7 +127,7 @@ All routes are under `/api/v1`. Errors have one shape: `{"error": {"code", "mess
 | Auth | `POST auth/register`, `POST auth/login`, `POST auth/refresh`, `GET/PATCH auth/me` |
 | Listings | `GET listings` (search, filters, sort, pagination), `GET listings/crops`, `GET listings/:id`, `POST listings`, `PATCH listings/:id`, `GET my/listings`, `GET farmers/:id`, `GET images/:id` |
 | Orders | `POST orders` (Idempotency-Key), `GET orders`, `GET orders/:id`, `PATCH orders/:id/status`, `POST orders/:id/review` |
-| Transport | `GET transport/jobs`, `GET transport/deliveries`, `POST transport/jobs/:order_id/quotes`, `DELETE transport/quotes/:id`, `POST transport/quotes/:id/accept` |
+| Transport | `GET transport/jobs`, `GET transport/deliveries`, `POST transport/jobs/:order_id/quotes`, `DELETE transport/quotes/:id`, `POST transport/quotes/:id/accept` (body: the `fee` the buyer saw) |
 | Payments | `GET payments/config`, `POST payments/orders/:id`, `POST payments/verify`, `POST payments/failed`, `POST payments/webhook` |
 | Prices | `GET prices/commodities`, `GET prices?commodity=&days=`, `GET prices/board` |
 | Dashboard | `GET dashboard` (role-specific), `GET notifications`, `POST notifications/read` |
