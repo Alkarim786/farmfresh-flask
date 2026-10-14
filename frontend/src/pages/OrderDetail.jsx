@@ -11,6 +11,8 @@ import {
   Button, Card, ErrorNote, Input, Modal, PaymentPill, Spinner, StarInput, StatusPill, Stars, Textarea, Verified, cx,
 } from "../components/ui";
 
+const REFUNDED_MSG = "This order was cancelled while you were paying, so your payment is being refunded.";
+
 function steps(o) {
   const delivery = o.delivery_mode === "DELIVERY";
   const s = [
@@ -148,6 +150,9 @@ export default function OrderDetail() {
       if (r.demo) setDemo(r.demo);
       else if (r.paid) {
         toast.success("Payment received. The transporter can now pick up.");
+        reload();
+      } else if (r.refunded) {
+        toast.error(REFUNDED_MSG);
         reload();
       }
     } catch (e) {
@@ -368,7 +373,12 @@ export default function OrderDetail() {
         </div>
       </Modal>
 
-      <DemoCheckout session={demo} onClose={() => setDemo(null)} onPaid={() => { setDemo(null); toast.success("Payment received"); reload(); }} />
+      <DemoCheckout session={demo} onClose={() => setDemo(null)} onPaid={(status) => {
+        setDemo(null);
+        if (status === "PAID") toast.success("Payment received");
+        else toast.error(REFUNDED_MSG);
+        reload();
+      }} />
     </div>
   );
 }
@@ -392,8 +402,8 @@ function DemoCheckout({ session, onClose, onPaid }) {
     setBusy(true);
     setErr(null);
     try {
-      await confirmDemoPayment(session.provider_order_id);
-      onPaid();
+      const r = await confirmDemoPayment(session.provider_order_id);
+      onPaid(r.payment_status);
     } catch (e) {
       setErr(e.message);
     } finally {

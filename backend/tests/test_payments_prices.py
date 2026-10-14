@@ -59,6 +59,58 @@ def test_webhook_requires_valid_signature_and_is_idempotent(app, client, api, mo
     assert sum("Payment of" in (e["note"] or "") for e in order["events"]) == 1
 
 
+def _pickup_order(client, api):
+    farmer, buyer = api.register("FARMER"), api.register("BUYER")
+    l = api.listing(farmer)
+    oid = api.order(buyer, l["id"], 10, mode="PICKUP").json["id"]
+    api.status(farmer, oid, "ACCEPTED")
+    return farmer, buyer, oid
+
+
+def _extra_payment(app, oid, ref):
+    """A second open checkout for the same order, as a buyer with two tabs would create."""
+    from app.models import Order, Payment
+    with app.app_context():
+        order = db.session.get(Order, oid)
+        db.session.add(Payment(order_id=oid, provider="demo", provider_order_id=ref, amount=order.total))
+        db.session.commit()
+
+
+def test_payment_after_cancellation_is_refunded(client, api):
+    farmer, buyer, oid = _pickup_order(client, api)
+    created = client.post(f"/api/v1/payments/orders/{oid}", headers=api.h(buyer)).json
+    assert api.status(farmer, oid, "CANCELLED").status_code == 200  # while the buyer is in checkout
+    r = client.post("/api/v1/payments/verify", headers=api.h(buyer),
+                    json={"razorpay_order_id": created["provider_order_id"], "demo_confirm": True})
+    assert r.status_code == 200 and r.json["payment_status"] == "REFUNDED"
+    order = client.get(f"/api/v1/orders/{oid}", headers=api.h(buyer)).json
+    assert order["status"] == "CANCELLED" and order["payment_status"] == "REFUNDED"
+
+
+def test_second_payment_for_a_paid_order_is_refunded(app, client, api):
+    _, buyer, oid = _pickup_order(client, api)
+    api.pay(buyer, oid)
+    _extra_payment(app, oid, "demo_order_second")
+    r = client.post("/api/v1/payments/verify", headers=api.h(buyer),
+                    json={"razorpay_order_id": "demo_order_second", "demo_confirm": True})
+    assert r.json["payment_status"] == "REFUNDED"
+    assert client.get(f"/api/v1/orders/{oid}", headers=api.h(buyer)).json["payment_status"] == "PAID"
+
+
+def test_failed_webhook_does_not_overwrite_a_paid_order(app, client, api, monkeypatch):
+    monkeypatch.setitem(app.config, "RAZORPAY_WEBHOOK_SECRET", "whsec")
+    _, buyer, oid = _pickup_order(client, api)
+    api.pay(buyer, oid)
+    _extra_payment(app, oid, "order_abandoned")
+    payload = json.dumps({"event": "payment.failed", "payload": {"payment": {"entity": {
+        "id": "pay_F1", "order_id": "order_abandoned"}}}}).encode()
+    sig = hmac.new(b"whsec", payload, hashlib.sha256).hexdigest()
+    r = client.post("/api/v1/payments/webhook", data=payload, headers={"X-Razorpay-Signature": sig},
+                    content_type="application/json")
+    assert r.status_code == 200
+    assert client.get(f"/api/v1/orders/{oid}", headers=api.h(buyer)).json["payment_status"] == "PAID"
+
+
 def test_amount_comes_from_server(client, api):
     farmer, buyer = api.register("FARMER"), api.register("BUYER")
     l = api.listing(farmer, price=12.5)

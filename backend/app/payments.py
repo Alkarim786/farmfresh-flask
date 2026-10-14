@@ -47,16 +47,38 @@ def _payable(order: Order) -> bool:
     return order.status == S.TRANSPORT_ASSIGNED
 
 
+SETTLED = {PaymentStatus.PAID, PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED}
+
+
+def _mark_failed(payment: Payment, order: Order):
+    payment.status = PaymentStatus.FAILED
+    # Another attempt for the same order may already have succeeded; never overwrite that.
+    if order.payment_status not in SETTLED:
+        order.payment_status = PaymentStatus.FAILED
+
+
 def _mark_paid(payment: Payment, provider_payment_id: str | None, actor_id: int | None, via: str):
-    """Idempotent: safe to call from both the checkout callback and the webhook."""
+    """Idempotent: safe to call from both the checkout callback and the webhook.
+
+    Money can still arrive after the order was cancelled or rejected (the buyer had the checkout
+    open), or for a second attempt on an order that is already paid. Such payments are refunded
+    straight away instead of being left on a dead order.
+    """
     order = db.session.scalar(db.select(Order).where(Order.id == payment.order_id).with_for_update())
-    if payment.status == PaymentStatus.PAID:
+    if payment.status in SETTLED:
         return order
+    already_paid = order.payment_status == PaymentStatus.PAID
     payment.status = PaymentStatus.PAID
     payment.provider_payment_id = provider_payment_id or payment.provider_payment_id
-    order.payment_status = PaymentStatus.PAID
     order.events.append(OrderEvent(from_status=order.status.value, to_status=order.status.value, actor_id=actor_id,
                                    note=f"Payment of ₹{payment.amount:,.2f} received ({via})"))
+    if order.status in (S.CANCELLED, S.REJECTED) or already_paid:
+        _refund(payment, order, actor_id, set_order_status=not already_paid)
+        notify(order.buyer_id, f"Payment for order #{order.id} is being refunded",
+               f"The order was already {'paid' if already_paid else order.status.value.lower()}, "
+               f"so ₹{payment.amount:,.2f} goes back to you.", f"/orders/{order.id}")
+        return order
+    order.payment_status = PaymentStatus.PAID
     for uid in {order.farmer_id, order.transporter_id} - {None}:
         notify(uid, f"Order #{order.id} is paid", f"₹{payment.amount:,.2f} received", f"/orders/{order.id}")
     return order
@@ -90,9 +112,9 @@ def create_payment(user: User, order_id: int):
                     "amount": paise(amount), "currency": "INR", "receipt": f"farmfresh-{order.id}-{uuid.uuid4().hex[:8]}",
                     "notes": {"farmfresh_order_id": str(order.id)},
                 })
-            except Exception as e:  # network / auth errors from the gateway
+            except Exception:  # network / auth errors from the gateway; details go to the log only
                 current_app.logger.exception("Razorpay order create failed")
-                raise APIError(f"Payment gateway error: {e}", 502, "gateway_error")
+                raise APIError("The payment gateway isn't responding. Try again in a minute.", 502, "gateway_error")
             provider_order_id = rp["id"]
         else:
             provider_order_id = f"demo_order_{uuid.uuid4().hex[:14]}"
@@ -128,8 +150,8 @@ def verify(user: User):
     if _mode() == "razorpay":
         pid, sig = str(data.get("razorpay_payment_id", "")), str(data.get("razorpay_signature", ""))
         if not verify_checkout_signature(provider_order_id, pid, sig):
-            payment.status = PaymentStatus.FAILED
-            order.payment_status = PaymentStatus.FAILED
+            if payment.status == PaymentStatus.CREATED:
+                _mark_failed(payment, order)
             db.session.commit()
             raise APIError("Payment signature didn't match. You have not been charged twice; try again.", 400,
                            "bad_signature")
@@ -139,7 +161,8 @@ def verify(user: User):
             raise APIError("Demo payments need demo_confirm")
         _mark_paid(payment, f"demo_pay_{uuid.uuid4().hex[:14]}", user.id, "demo checkout")
     db.session.commit()
-    return ok({"ok": True, "order_id": order.id, "payment_status": "PAID"})
+    # REFUNDED / REFUND_PENDING when the order was cancelled while the buyer was paying.
+    return ok({"ok": True, "order_id": order.id, "payment_status": payment.status.value})
 
 
 @bp.post("/failed")
@@ -154,8 +177,7 @@ def failed(user: User):
     if order.buyer_id != user.id:
         raise forbidden()
     if payment.status == PaymentStatus.CREATED:
-        payment.status = PaymentStatus.FAILED
-        order.payment_status = PaymentStatus.FAILED
+        _mark_failed(payment, order)
         reason = str(data.get("reason", ""))[:200] or "Payment failed"
         order.events.append(OrderEvent(from_status=order.status.value, to_status=order.status.value,
                                        actor_id=user.id, note=f"Payment failed: {reason}"))
@@ -187,14 +209,16 @@ def webhook():
         ent = payload.get("payment", {}).get("entity", {})
         payment = db.session.scalar(db.select(Payment).where(Payment.provider_order_id == ent.get("order_id")))
         if payment and payment.status == PaymentStatus.CREATED:
-            payment.status = PaymentStatus.FAILED
-            db.session.get(Order, payment.order_id).payment_status = PaymentStatus.FAILED
+            _mark_failed(payment, db.session.get(Order, payment.order_id))
     elif etype == "refund.processed":
         ent = payload.get("refund", {}).get("entity", {})
         payment = db.session.scalar(db.select(Payment).where(Payment.provider_payment_id == ent.get("payment_id")))
         if payment and payment.status != PaymentStatus.REFUNDED:
             payment.status = PaymentStatus.REFUNDED
-            db.session.get(Order, payment.order_id).payment_status = PaymentStatus.REFUNDED
+            order = db.session.get(Order, payment.order_id)
+            # A refunded duplicate payment must not mark a still-paid order as refunded.
+            if order.payment_status == PaymentStatus.REFUND_PENDING:
+                order.payment_status = PaymentStatus.REFUNDED
     db.session.commit()
     return ok({"ok": True})
 
@@ -203,20 +227,27 @@ def refund_order(order: Order, actor: User):
     """Called inside a cancellation transaction for a paid order."""
     payment = db.session.scalar(db.select(Payment).where(
         Payment.order_id == order.id, Payment.status == PaymentStatus.PAID))
-    if payment is None:
-        return
+    if payment is not None:
+        _refund(payment, order, actor.id)
+
+
+def _refund(payment: Payment, order: Order, actor_id: int | None, *, set_order_status: bool = True):
+    """Refund one captured payment. Runs inside the caller's transaction: if the gateway call
+    fails, the whole change (e.g. the cancellation) is rolled back and can be retried."""
     if payment.provider == "razorpay":
         try:
             r = _client().payment.refund(payment.provider_payment_id, {"amount": paise(payment.amount),
                                                                       "notes": {"farmfresh_order_id": str(order.id)}})
-        except Exception as e:
+        except Exception:
             current_app.logger.exception("Razorpay refund failed")
-            raise APIError(f"Refund failed at the gateway, order not cancelled: {e}", 502, "gateway_error")
+            raise APIError("The payment gateway couldn't issue the refund, so nothing was changed. Try again shortly.",
+                           502, "gateway_error")
         payment.provider_refund_id = r.get("id")
         payment.status = PaymentStatus.REFUNDED if r.get("status") == "processed" else PaymentStatus.REFUND_PENDING
     else:
         payment.provider_refund_id = f"demo_rfnd_{uuid.uuid4().hex[:14]}"
         payment.status = PaymentStatus.REFUNDED
-    order.payment_status = payment.status
-    order.events.append(OrderEvent(from_status=order.status.value, to_status=order.status.value, actor_id=actor.id,
+    if set_order_status:
+        order.payment_status = payment.status
+    order.events.append(OrderEvent(from_status=order.status.value, to_status=order.status.value, actor_id=actor_id,
                                    note=f"Refund of ₹{payment.amount:,.2f} {'issued' if payment.status == PaymentStatus.REFUNDED else 'initiated'}"))
