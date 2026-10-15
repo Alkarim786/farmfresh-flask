@@ -1,15 +1,19 @@
 # Render Blueprint: New > Blueprint > pick this repo. Creates the database and the web service.
+# Names are unique on purpose: a Blueprint adopts any existing service with the same name.
+# The web service must share the database's region to reach it over the internal connection string.
 databases:
   - name: farmfresh-db
     plan: free
+    region: oregon
     databaseName: farmfresh
     user: farmfresh
 
 services:
   - type: web
-    name: farmfresh
+    name: farmfresh-flask
     runtime: docker
     plan: free
+    region: oregon
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
