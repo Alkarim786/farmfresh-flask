@@ -1,5 +1,7 @@
 # FarmFresh
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Alkarim786/farmfresh-flask)
+
 A multi-sided agricultural marketplace: farmers list produce, buyers order directly, transporters quote for delivery, and every price is shown next to the day's mandi rate.
 
 **Stack:** Python · Flask · PostgreSQL · SQLAlchemy/Alembic · JWT · Razorpay · React 19 · Tailwind CSS 4 · Recharts · Docker · GitHub Actions · Render
@@ -110,8 +112,10 @@ Tests: `cd backend && pytest -q` (needs the `farmfresh_test` database).
 ## Deploy (Render, free tier)
 
 1. Push this repo to GitHub.
-2. In Render: **New → Blueprint**, pick the repo. `render.yaml` creates the Postgres database and the web service, generates secrets, runs migrations and seeds demo data on first boot.
+2. Click **Deploy to Render** at the top of this README (or in Render: **New → Blueprint**, pick the repo). `render.yaml` creates the Postgres database and the web service, generates secrets, runs migrations and seeds demo data on first boot.
 3. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (12+ characters) in the service's **Environment** tab. The admin account is created on the next deploy.
+
+After that, every push to `main` redeploys automatically.
 4. Optional: add Razorpay test keys under the service's **Environment** tab, then redeploy. Without keys the app runs a clearly labelled demo checkout.
 
 Note: Render's free Postgres expires after 30 days; point `DATABASE_URL` at Neon or Supabase for a longer-lived free database.
