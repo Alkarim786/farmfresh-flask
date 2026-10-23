@@ -14,6 +14,8 @@ services:
     runtime: docker
     plan: free
     region: oregon
+    # Deploy a push to main only after its GitHub Actions checks (tests, builds) have passed.
+    autoDeployTrigger: checksPass
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
