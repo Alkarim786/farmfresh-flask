@@ -4,6 +4,10 @@
 
 A multi-sided agricultural marketplace: farmers list produce, buyers order directly, transporters quote for delivery, and every price is shown next to the day's mandi rate.
 
+**Live demo:** https://farmfresh-flask.onrender.com (free tier: the first visit after a quiet spell takes about 50 seconds to wake up).
+
+> **About payments on the live demo.** The Razorpay integration is complete: server-side orders, HMAC-verified checkout, signed and replay-safe webhooks, automatic refunds. It is covered by tests (`backend/tests/test_payments_prices.py`). The live demo runs without gateway keys, so it uses a clearly labelled simulated checkout that goes through the same server-side payment flow. Setting `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` switches it to real Razorpay checkout with no code changes.
+
 **Stack:** Python · Flask · PostgreSQL · SQLAlchemy/Alembic · JWT · Razorpay · React 19 · Tailwind CSS 4 · Recharts · Docker · GitHub Actions · Render
 
 ## What it does
