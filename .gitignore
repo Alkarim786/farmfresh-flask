@@ -15,3 +15,5 @@ instance/
 /farmfresh/
 .neon
 .env.local
+# Old Render database URL, used once to migrate data to Neon
+.env.render
