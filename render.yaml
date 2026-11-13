@@ -1,13 +1,7 @@
-# Render Blueprint: New > Blueprint > pick this repo. Creates the database and the web service.
+# Render Blueprint: New > Blueprint > pick this repo. Creates the web service.
+# The database is Neon Postgres (Render's free Postgres expires after 30 days); its connection
+# string is set by hand in the Render dashboard as DATABASE_URL.
 # Names are unique on purpose: a Blueprint adopts any existing service with the same name.
-# The web service must share the database's region to reach it over the internal connection string.
-databases:
-  - name: farmfresh-db
-    plan: free
-    region: oregon
-    databaseName: farmfresh
-    user: farmfresh
-
 services:
   - type: web
     name: farmfresh-flask
@@ -18,10 +12,9 @@ services:
     autoDeployTrigger: checksPass
     healthCheckPath: /api/health
     envVars:
+      # Neon connection string (pooled, with sslmode=require). Paste it in the Render dashboard.
       - key: DATABASE_URL
-        fromDatabase:
-          name: farmfresh-db
-          property: connectionString
+        sync: false
       - key: APP_ENV
         value: production
       - key: SECRET_KEY

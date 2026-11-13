@@ -1,6 +1,12 @@
 import os
 from datetime import timedelta
 
+from dotenv import find_dotenv, load_dotenv
+
+# `neon init` writes the Neon connection strings to .env.local at the repo root. Load it for
+# local runs; variables already set in the environment (Render, CI) always take precedence.
+load_dotenv(find_dotenv(".env.local", usecwd=True), override=False)
+
 
 def _db_url() -> str:
     url = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres@localhost/farmfresh")

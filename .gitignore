@@ -13,3 +13,5 @@ instance/
 *.sqlite3
 # Local duplicate checkout of this repo
 /farmfresh/
+.neon
+.env.local
