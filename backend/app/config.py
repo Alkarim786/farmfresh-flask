@@ -9,7 +9,11 @@ load_dotenv(find_dotenv(".env.local", usecwd=True), override=False)
 
 
 def _db_url() -> str:
-    url = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres@localhost/farmfresh")
+    url = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres@localhost/farmfresh").strip()
+    # Tolerate a value pasted into a dashboard straight from a .env file: KEY= prefix and/or quotes.
+    if url.startswith("DATABASE_URL="):
+        url = url[len("DATABASE_URL="):]
+    url = url.strip().strip('"').strip("'").strip()
     # Render / Heroku style URLs use postgres:// — SQLAlchemy needs an explicit driver.
     if url.startswith("postgres://"):
         url = "postgresql+psycopg://" + url[len("postgres://"):]
