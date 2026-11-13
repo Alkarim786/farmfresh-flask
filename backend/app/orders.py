@@ -221,8 +221,9 @@ def _notify_transition(order: Order, to: S, actor: User, note: str | None, open_
     if to == S.ACCEPTED and order.delivery_mode == DeliveryMode.DELIVERY:
         # Open the job for bids.
         for t in db.session.scalars(db.select(User).where(User.role == Role.TRANSPORTER, User.active.is_(True))):
+            qty = f"{order.total_qty.normalize():f}"  # 120.00 -> "120", 12.50 -> "12.5"
             notify(t.id, f"New delivery job #{order.id}: send a quote",
-                   f"{order.total_qty:g} {order.items[0].unit_snapshot} from {order.items[0].listing.location}",
+                   f"{qty} {order.items[0].unit_snapshot} from {order.items[0].listing.location}",
                    "/jobs")
 
 
