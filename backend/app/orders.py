@@ -94,8 +94,11 @@ def create_order(buyer: User, items: list[dict], *, delivery_mode: DeliveryMode,
     db.session.add(order)
     db.session.flush()
     order.events.append(OrderEvent(from_status=None, to_status=S.PENDING.value, actor_id=buyer.id, note="Order placed"))
+    crops = ", ".join(i.crop_snapshot for i in order.items)
     notify(farmer_id, f"New order #{order.id} from {buyer.name}",
-           f"₹{order.subtotal:,.2f} for {', '.join(i.crop_snapshot for i in order.items)}", f"/orders/{order.id}")
+           f"₹{order.subtotal:,.2f} for {crops}. Accept or decline it.", f"/orders/{order.id}")
+    notify(buyer.id, f"Order #{order.id} placed",
+           f"₹{order.subtotal:,.2f} for {crops}. Waiting for the farmer to accept.", f"/orders/{order.id}")
     try:
         db.session.commit()
     except IntegrityError:
@@ -170,19 +173,74 @@ def _check(order: Order, to: S, actor: User, *, via_quote: bool = False):
         deny("Unknown status")
 
 
+# What each party is told when an order moves to a status: a headline, plus a next step per role.
+HEADLINE = {
+    S.ACCEPTED: "accepted by the farmer",
+    S.REJECTED: "declined by the farmer",
+    S.CANCELLED: "cancelled",
+    S.TRANSPORT_ASSIGNED: "has a truck booked",
+    S.DISPATCHED: "is on its way",
+    S.DELIVERED: "was delivered",
+    S.COMPLETED: "is complete",
+}
+
+
+def _next_step(order: Order, to: S, uid: int) -> str | None:
+    pickup = order.delivery_mode == DeliveryMode.PICKUP
+    if uid == order.buyer_id:
+        return {
+            S.ACCEPTED: ("Pay now, then collect your produce from the farm." if pickup else
+                         "Transporters are bidding to deliver it. Pick a quote to continue."),
+            S.REJECTED: "Any reserved stock went back on sale. Try another farm in the marketplace.",
+            S.DISPATCHED: "The transporter has picked up your produce.",
+            S.DELIVERED: "Check the produce, then confirm receipt and rate the farmer.",
+        }.get(to)
+    if uid == order.farmer_id:
+        return {
+            S.TRANSPORT_ASSIGNED: "The truck collects once the buyer has paid.",
+            S.DISPATCHED: "The produce has left your farm.",
+            S.COMPLETED: "The buyer confirmed receipt.",
+        }.get(to)
+    if uid == order.transporter_id:
+        return {S.COMPLETED: "The buyer confirmed receipt. Thanks for delivering."}.get(to)
+    return None
+
+
+def _notify_transition(order: Order, to: S, actor: User, note: str | None, open_bidders: list[int], *,
+                       skip: set[int]):
+    link = f"/orders/{order.id}"
+    title = f"Order #{order.id} {HEADLINE[to]}"
+    if to == S.CANCELLED:
+        title += f" by {actor.name}"
+    for uid in {order.buyer_id, order.farmer_id, order.transporter_id} - {None, actor.id} - skip:
+        body = " ".join(p for p in (_next_step(order, to, uid), f"Note: {note}" if note else None) if p)
+        notify(uid, title, body or None, link)
+    for uid in set(open_bidders) - {actor.id}:
+        notify(uid, f"Delivery job #{order.id} was {to.value.lower()}", "Your quote was closed. No action needed.",
+               "/jobs")
+    if to == S.ACCEPTED and order.delivery_mode == DeliveryMode.DELIVERY:
+        # Open the job for bids.
+        for t in db.session.scalars(db.select(User).where(User.role == Role.TRANSPORTER, User.active.is_(True))):
+            notify(t.id, f"New delivery job #{order.id}: send a quote",
+                   f"{order.total_qty:g} {order.items[0].unit_snapshot} from {order.items[0].listing.location}",
+                   "/jobs")
+
+
 def transition(order_id: int, to: S, actor: User, *, note: str | None = None, via_quote: bool = False,
-               commit: bool = True) -> Order:
+               commit: bool = True, skip_notify: set[int] = frozenset()) -> Order:
     order = db.session.scalar(db.select(Order).where(Order.id == order_id).with_for_update())
     if order is None:
         raise not_found("Order")
     _check(order, to, actor, via_quote=via_quote)
     frm = order.status
 
+    open_bidders: list[int] = []
     if to in (S.REJECTED, S.CANCELLED):
         release_stock(order)
         for q in db.session.scalars(db.select(TransportQuote).where(
                 TransportQuote.order_id == order.id, TransportQuote.status == QuoteStatus.OPEN)):
             q.status = QuoteStatus.DECLINED
+            open_bidders.append(q.transporter_id)
         if order.payment_status == PaymentStatus.PAID:
             from .payments import refund_order
             refund_order(order, actor)
@@ -190,16 +248,7 @@ def transition(order_id: int, to: S, actor: User, *, note: str | None = None, vi
     order.status = to
     order.events.append(OrderEvent(from_status=frm.value, to_status=to.value, actor_id=actor.id, note=note))
 
-    label = to.value.replace("_", " ").lower()
-    link = f"/orders/{order.id}"
-    for uid in {order.buyer_id, order.farmer_id, order.transporter_id} - {None, actor.id}:
-        notify(uid, f"Order #{order.id} is {label}", note, link)
-    if to == S.ACCEPTED and order.delivery_mode == DeliveryMode.DELIVERY:
-        # Tell transporters there's a new delivery job.
-        for t in db.session.scalars(db.select(User).where(User.role == Role.TRANSPORTER, User.active.is_(True))):
-            notify(t.id, f"New delivery job #{order.id}",
-                   f"{order.total_qty:g} {order.items[0].unit_snapshot} from {order.items[0].listing.location}",
-                   "/transport")
+    _notify_transition(order, to, actor, note, open_bidders, skip=skip_notify)
     if commit:
         db.session.commit()
     return order

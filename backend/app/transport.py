@@ -118,6 +118,8 @@ def withdraw_quote(user, quote_id):
     if q.status != QuoteStatus.OPEN:
         raise APIError("Only open quotes can be withdrawn", 409)
     q.status = QuoteStatus.WITHDRAWN
+    notify(q.order.buyer_id, f"{user.name} withdrew their quote for order #{q.order_id}",
+           "Pick another quote, or wait for more bids.", f"/orders/{q.order_id}")
     db.session.commit()
     return ok(quote_json(q))
 
@@ -150,6 +152,13 @@ def accept_quote(user, quote_id):
     for other in db.session.scalars(db.select(TransportQuote).where(
             TransportQuote.order_id == order.id, TransportQuote.id != q.id, TransportQuote.status == QuoteStatus.OPEN)):
         other.status = QuoteStatus.DECLINED
-    order = transition(order.id, S.TRANSPORT_ASSIGNED, user, via_quote=True,
+        notify(other.transporter_id, f"Your quote for job #{order.id} wasn't chosen",
+               f"The buyer booked another transporter. Your bid was ₹{other.fee:,.2f}.", "/jobs")
+    pickup_at = order.items[0].listing.location if order.items else "the farm"
+    notify(q.transporter_id, f"You won delivery job #{order.id} for ₹{q.fee:,.2f}",
+           f"Pick up from {pickup_at} once the buyer has paid. You'll be notified when they do.",
+           f"/orders/{order.id}")
+    # The winner already got the message above, so it is skipped in the generic status notification.
+    order = transition(order.id, S.TRANSPORT_ASSIGNED, user, via_quote=True, skip_notify={q.transporter_id},
                        note=f"{q.transporter.name} booked for ₹{q.fee:,.2f}, about {q.eta_hours} h")
     return ok(order_json(order, user, detail=True))

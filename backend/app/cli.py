@@ -96,6 +96,9 @@ def seed_demo(with_admin: bool = True):
         _user("Kongu Cold Movers", "kongu@farmfresh.demo", Role.TRANSPORTER, verified=True, phone="+91 97890 99999",
               location="Coimbatore", vehicle_type="Reefer truck", vehicle_capacity_kg=4000,
               service_area="Oddanchatram, Coimbatore, Madurai, Hosur, Chennai"),
+        _user("Coastal Carriers", "coastal@farmfresh.demo", Role.TRANSPORTER, verified=True, phone="+91 97890 77777",
+              location="Puducherry", vehicle_type="Ashok Leyland Dost", vehicle_capacity_kg=1500,
+              service_area="Puducherry, Bahour, Villupuram, Cuddalore, Chennai"),
     ]
     db.session.flush()
 

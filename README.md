@@ -19,7 +19,9 @@ A multi-sided agricultural marketplace: farmers list produce, buyers order direc
 | Transporter | See loads ranked by vehicle fit and service area, quote, mark pickup and delivery, track earnings |
 | Admin | Verify or suspend accounts, hide listings, view platform-wide order value and status |
 
-Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`. The login page has one-click buttons for each. Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
+Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`. The login page has one-click buttons for each, plus extra accounts for trying competing transport bids: `kongu@farmfresh.demo` and `coastal@farmfresh.demo` (transporters), `lakshmi@farmfresh.demo` (farmer), `freshbasket@farmfresh.demo` (buyer).
+
+Every step of an order notifies the people it affects, each with their next step. The bell refreshes every 20 seconds. The farmer is told about a new order; transporters about an open job; the buyer about each bid; the winning and losing bidders when the buyer chooses; everyone about payment, dispatch, delivery and completion; open bidders if the job is cancelled. Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
 
 ## Architecture
 

@@ -79,8 +79,17 @@ def _mark_paid(payment: Payment, provider_payment_id: str | None, actor_id: int 
                f"so ₹{payment.amount:,.2f} goes back to you.", f"/orders/{order.id}")
         return order
     order.payment_status = PaymentStatus.PAID
-    for uid in {order.farmer_id, order.transporter_id} - {None}:
-        notify(uid, f"Order #{order.id} is paid", f"₹{payment.amount:,.2f} received", f"/orders/{order.id}")
+    link = f"/orders/{order.id}"
+    pickup = order.delivery_mode == DeliveryMode.PICKUP
+    notify(order.buyer_id, f"Payment received for order #{order.id}",
+           f"₹{payment.amount:,.2f} paid. " + ("Collect your produce from the farm." if pickup else
+                                                 "Your transporter can now pick up the produce."), link)
+    notify(order.farmer_id, f"Order #{order.id} is paid",
+           f"₹{order.subtotal:,.2f} for your produce. " + ("The buyer will collect it from you." if pickup else
+                                                           "The transporter will collect it."), link)
+    if order.transporter_id:
+        notify(order.transporter_id, f"Job #{order.id} is paid: ready for pickup",
+               f"Collect from {order.items[0].listing.location} and mark it dispatched.", link)
     return order
 
 

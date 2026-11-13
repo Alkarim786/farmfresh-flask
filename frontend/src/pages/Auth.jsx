@@ -14,6 +14,13 @@ const DEMO = [
   ["Transporter", "transport@farmfresh.demo"],
 ];
 
+const MORE_DEMO = [
+  ["Transporter 2 (Kongu)", "kongu@farmfresh.demo"],
+  ["Transporter 3 (Coastal)", "coastal@farmfresh.demo"],
+  ["Farmer 2 (Lakshmi)", "lakshmi@farmfresh.demo"],
+  ["Buyer 2 (Fresh Basket)", "freshbasket@farmfresh.demo"],
+];
+
 function AuthFrame({ title, sub, children }) {
   return (
     <div className="max-w-md mx-auto px-4 py-12 sm:py-16">
@@ -72,6 +79,17 @@ export function Login() {
             </Button>
           ))}
         </div>
+        <details className="mt-3 text-sm">
+          <summary className="cursor-pointer text-muted">More demo accounts (to try competing transport bids)</summary>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {MORE_DEMO.map(([label, email]) => (
+              <Button key={email} variant="secondary" size="sm" disabled={busy}
+                onClick={() => submit(null, { email, password: "farmfresh123" })}>
+                {label}
+              </Button>
+            ))}
+          </div>
+        </details>
       </div>
     </AuthFrame>
   );

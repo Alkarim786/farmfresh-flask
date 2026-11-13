@@ -62,6 +62,54 @@ def test_accepting_a_quote_requires_the_fee_the_buyer_saw(client, api):
     assert ok.status_code == 200 and ok.json["transport_fee"] == "900.00"
 
 
+def test_every_party_is_notified_through_the_lifecycle(client, api):
+    farmer, buyer = api.register("FARMER"), api.register("BUYER")
+    winner = api.register("TRANSPORTER", "Winner Trucks")
+    loser = api.register("TRANSPORTER", "Loser Trucks")
+    titles = lambda who: [n["title"] for n in client.get("/api/v1/notifications", headers=api.h(who)).json["items"]]
+    l = api.listing(farmer)
+    oid = api.order(buyer, l["id"], 10).json["id"]
+    assert f"New order #{oid} from Buyer User" in titles(farmer)
+    assert f"Order #{oid} placed" in titles(buyer)
+
+    api.status(farmer, oid, "ACCEPTED")
+    assert f"Order #{oid} accepted by the farmer" in titles(buyer)
+    assert f"New delivery job #{oid}: send a quote" in titles(winner)
+    assert f"New delivery job #{oid}: send a quote" in titles(loser)
+
+    bid = lambda who, fee: client.post(f"/api/v1/transport/jobs/{oid}/quotes", headers=api.h(who),
+                                       json={"fee": fee, "eta_hours": 4}).json
+    w, _ = bid(winner, 400), bid(loser, 450)
+    assert sum("delivery quote for order" in t for t in titles(buyer)) == 2
+    client.post(f"/api/v1/transport/quotes/{w['id']}/accept", headers=api.h(buyer), json={"fee": "400.00"})
+    assert f"You won delivery job #{oid} for ₹400.00" in titles(winner)
+    assert f"Order #{oid} has a truck booked" not in titles(winner)  # no duplicate for the winner
+    assert f"Your quote for job #{oid} wasn't chosen" in titles(loser)
+    assert f"Order #{oid} has a truck booked" in titles(farmer)
+
+    api.pay(buyer, oid)
+    assert f"Payment received for order #{oid}" in titles(buyer)
+    assert f"Order #{oid} is paid" in titles(farmer)
+    assert f"Job #{oid} is paid: ready for pickup" in titles(winner)
+
+    api.status(winner, oid, "DISPATCHED")
+    api.status(winner, oid, "DELIVERED")
+    assert {f"Order #{oid} is on its way", f"Order #{oid} was delivered"} <= set(titles(buyer)) & set(titles(farmer))
+    api.status(buyer, oid, "COMPLETED")
+    assert f"Order #{oid} is complete" in titles(farmer) and f"Order #{oid} is complete" in titles(winner)
+    assert not any(f"#{oid}" in t and "complete" in t for t in titles(loser))  # losers hear nothing more
+
+
+def test_open_bidders_hear_when_a_job_is_cancelled(client, api):
+    farmer, buyer, trans = api.register("FARMER"), api.register("BUYER"), api.register("TRANSPORTER")
+    oid = api.order(buyer, api.listing(farmer)["id"], 10).json["id"]
+    api.status(farmer, oid, "ACCEPTED")
+    client.post(f"/api/v1/transport/jobs/{oid}/quotes", headers=api.h(trans), json={"fee": 300, "eta_hours": 4})
+    api.status(buyer, oid, "CANCELLED")
+    titles = [n["title"] for n in client.get("/api/v1/notifications", headers=api.h(trans)).json["items"]]
+    assert f"Delivery job #{oid} was cancelled" in titles
+
+
 def test_pickup_flow(client, api):
     farmer, buyer = api.register("FARMER"), api.register("BUYER")
     l = api.listing(farmer)
