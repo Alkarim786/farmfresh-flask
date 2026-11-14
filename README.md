@@ -19,57 +19,85 @@ A multi-sided agricultural marketplace: farmers list produce, buyers order direc
 | Transporter | See loads ranked by vehicle fit and service area, quote, mark pickup and delivery, track earnings |
 | Admin | Verify or suspend accounts, hide listings, view platform-wide order value and status |
 
-Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`. The login page has one-click buttons for each, plus extra accounts for trying competing transport bids: `kongu@farmfresh.demo` and `coastal@farmfresh.demo` (transporters), `lakshmi@farmfresh.demo` (farmer), `freshbasket@farmfresh.demo` (buyer).
+Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`. The login page has one-click buttons for each, plus extra accounts for trying competing transport bids: `kongu@farmfresh.demo` and `coastal@farmfresh.demo` (transporters), `lakshmi@farmfresh.demo` (farmer), `freshbasket@farmfresh.demo` (buyer). Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
 
-Every step of an order notifies the people it affects, each with their next step. The bell refreshes every 20 seconds. The farmer is told about a new order; transporters about an open job; the buyer about each bid; the winning and losing bidders when the buyer chooses; everyone about payment, dispatch, delivery and completion; open bidders if the job is cancelled. Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
+Every step of an order notifies the people it affects, each with their next step. The bell refreshes every 20 seconds.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-  B[Browser - React SPA] -->|JSON over HTTPS, JWT| F[Flask API + gunicorn]
-  F --> P[(PostgreSQL)]
-  F -->|create order / refund| R[Razorpay]
-  R -->|signed webhook| F
-  F -. flask import-prices .-> G[data.gov.in AGMARKNET]
+flowchart TB
+  user["Browser<br/>React app"]
+  subgraph render["Render (Docker container)"]
+    api["Flask API<br/>/api/v1/..."]
+    ui["Built React files"]
+  end
+  db[("Neon<br/>PostgreSQL")]
+  pay["Razorpay"]
+  user -- "HTTPS + JWT" --> api
+  user -- "loads the page" --> ui
+  api -- "SQL" --> db
+  api -- "create payment, refund" --> pay
+  pay -- "signed webhook" --> api
 ```
 
-One Docker image serves both the API (`/api/v1/*`) and the built React app, so deployment is a single web service plus a managed Postgres. Product photos are resized in the browser and stored in Postgres, so there is no object-storage dependency.
+One Docker image serves both the API and the built React app, so deployment is a single web service plus a managed Postgres database.
+
+## How an order flows
+
+```mermaid
+sequenceDiagram
+  actor B as Buyer
+  participant S as FarmFresh API
+  actor F as Farmer
+  actor T as Transporters
+  B->>S: Place order
+  Note over S: Lock stock row, reserve qty
+  S-->>F: New order
+  F->>S: Accept
+  S-->>T: New delivery job
+  T->>S: Send bids
+  S-->>B: New quotes
+  B->>S: Pick the cheapest bid
+  S-->>T: You won / not chosen
+  B->>S: Pay (Razorpay)
+  Note over S: Verify signature, mark paid
+  S-->>T: Ready for pickup
+  T->>S: Dispatched, then delivered
+  S-->>B: Delivered, please confirm
+  B->>S: Confirm and rate
+```
 
 ## Order lifecycle
 
 ```mermaid
-stateDiagram-v2
-  [*] --> PENDING: buyer places order (stock reserved)
-  PENDING --> ACCEPTED: farmer
-  PENDING --> REJECTED: farmer (stock released)
-  ACCEPTED --> TRANSPORT_ASSIGNED: buyer accepts a quote
-  TRANSPORT_ASSIGNED --> DISPATCHED: transporter, only if PAID
-  DISPATCHED --> DELIVERED: transporter
-  ACCEPTED --> DELIVERED: pickup orders, farmer, only if PAID
-  DELIVERED --> COMPLETED: buyer confirms
-  PENDING --> CANCELLED
-  ACCEPTED --> CANCELLED
-  TRANSPORT_ASSIGNED --> CANCELLED: refund issued if paid
+flowchart TD
+  P([PENDING]) -->|farmer accepts| A([ACCEPTED])
+  P -->|farmer declines| R([REJECTED])
+  A -->|buyer picks a bid| T([TRUCK BOOKED])
+  T -->|paid, picked up| D([DISPATCHED])
+  D -->|transporter| V([DELIVERED])
+  A -.->|pickup order, paid| V
+  V -->|buyer confirms| C([COMPLETED])
+  A -->|cancel| X([CANCELLED])
+  T -->|cancel, refund if paid| X
 ```
 
-All transitions go through one function, `transition()` in `backend/app/orders.py`. It locks the order row, checks the move is legal for the current state and the actor's role, applies side effects (stock release, refunds, quote clean-up, notifications) and writes an audit event, all in a single transaction.
+Every status change goes through one function, `transition()` in `backend/app/orders.py`. It locks the order row, checks the move is allowed for that status and that person, applies side effects (stock release, refunds, closing open bids, notifications) and writes an audit event, all in one transaction. A pending order can also be cancelled by the buyer.
 
 ## Data model
 
 ```mermaid
 erDiagram
   USERS ||--o{ LISTINGS : "farmer lists"
-  LISTINGS ||--o{ LISTING_IMAGES : has
   USERS ||--o{ ORDERS : "buyer places"
   ORDERS ||--|{ ORDER_ITEMS : contains
   LISTINGS ||--o{ ORDER_ITEMS : "sold as"
-  ORDERS ||--o{ ORDER_EVENTS : "audit log"
-  ORDERS ||--o{ TRANSPORT_QUOTES : receives
+  ORDERS ||--o{ TRANSPORT_QUOTES : "receives bids"
   ORDERS ||--o{ PAYMENTS : "paid by"
-  ORDERS ||--o| REVIEWS : "rated in"
-  USERS ||--o{ NOTIFICATIONS : gets
 ```
+
+Supporting tables: `listing_images`, `order_events` (audit log), `reviews`, `notifications`, `price_records` (mandi prices).
 
 ## Engineering decisions worth asking about
 
@@ -115,16 +143,15 @@ npm install && npm run dev       # UI on :5173, proxies /api to :5000
 
 Tests: `cd backend && pytest -q` (needs the `farmfresh_test` database).
 
-## Deploy (Render, free tier)
+## Deploy (Render + Neon, free tier)
 
-1. Push this repo to GitHub.
-2. Click **Deploy to Render** at the top of this README (or in Render: **New → Blueprint**, pick the repo). `render.yaml` creates the Postgres database and the web service, generates secrets, runs migrations and seeds demo data on first boot.
-3. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` (12+ characters) in the service's **Environment** tab. The admin account is created on the next deploy.
+1. Create a free PostgreSQL database on [Neon](https://neon.tech) and copy its pooled connection string.
+2. Click **Deploy to Render** at the top of this README (or in Render: **New → Blueprint**, pick the repo). `render.yaml` creates the web service and generates its secrets.
+3. In the service's **Environment** tab set `DATABASE_URL` (the Neon string) and `ADMIN_EMAIL` / `ADMIN_PASSWORD` (12+ characters).
+4. Deploy. On start the container runs migrations, seeds demo data into an empty database and creates the admin.
+5. Optional: add Razorpay test keys in the same tab. Without keys the app runs a clearly labelled demo checkout.
 
-After that, every push to `main` redeploys automatically.
-4. Optional: add Razorpay test keys under the service's **Environment** tab, then redeploy. Without keys the app runs a clearly labelled demo checkout.
-
-Note: Render's free Postgres expires after 30 days; point `DATABASE_URL` at Neon or Supabase for a longer-lived free database.
+With the Render GitHub App installed on the repo, every push to `main` deploys once the CI checks pass.
 
 ### Razorpay
 
