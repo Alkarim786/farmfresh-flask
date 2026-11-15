@@ -6,6 +6,22 @@ A multi-sided agricultural marketplace: farmers list produce, buyers order direc
 
 **Live demo:** https://farmfresh-flask.onrender.com (free tier: the first visit after a quiet spell takes about 50 seconds to wake up).
 
+### Demo logins
+
+Password for every account: **`farmfresh123`** (the login page also has one-click buttons).
+
+| Role | Email | Try this |
+|---|---|---|
+| Buyer | `buyer@farmfresh.demo` | Order produce, book a transporter, pay, confirm and rate |
+| Farmer | `farmer@farmfresh.demo` | Accept or decline orders, manage listings |
+| Transporter | `transport@farmfresh.demo` | Find loads, send quotes, mark pickup and delivery |
+| Transporter 2 | `kongu@farmfresh.demo` | Send a competing quote on the same job |
+| Transporter 3 | `coastal@farmfresh.demo` | A third bidder |
+| Farmer 2 | `lakshmi@farmfresh.demo` | Second farm (organic produce) |
+| Buyer 2 | `freshbasket@farmfresh.demo` | Second buyer |
+
+Tip: use a normal window, a private window and a second browser to be buyer, farmer and transporter at the same time.
+
 > **About payments on the live demo.** The Razorpay integration is complete: server-side orders, HMAC-verified checkout, signed and replay-safe webhooks, automatic refunds. It is covered by tests (`backend/tests/test_payments_prices.py`). The live demo runs without gateway keys, so it uses a clearly labelled simulated checkout that goes through the same server-side payment flow. Setting `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` switches it to real Razorpay checkout with no code changes.
 
 **Stack:** Python · Flask · PostgreSQL · SQLAlchemy/Alembic · JWT · Razorpay · React 19 · Tailwind CSS 4 · Recharts · Docker · GitHub Actions · Render
@@ -19,7 +35,7 @@ A multi-sided agricultural marketplace: farmers list produce, buyers order direc
 | Transporter | See loads ranked by vehicle fit and service area, quote, mark pickup and delivery, track earnings |
 | Admin | Verify or suspend accounts, hide listings, view platform-wide order value and status |
 
-Demo accounts (password `farmfresh123`): `farmer@farmfresh.demo`, `buyer@farmfresh.demo`, `transport@farmfresh.demo`. The login page has one-click buttons for each, plus extra accounts for trying competing transport bids: `kongu@farmfresh.demo` and `coastal@farmfresh.demo` (transporters), `lakshmi@farmfresh.demo` (farmer), `freshbasket@farmfresh.demo` (buyer). Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
+The demo logins are listed at the top of this README. Local runs (`flask seed`, `docker compose`) also create `admin@farmfresh.demo`; a production deploy never does, because the demo password is public. There the admin comes from the `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
 
 Every step of an order notifies the people it affects, each with their next step. The bell refreshes every 20 seconds.
 
