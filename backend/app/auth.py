@@ -24,8 +24,7 @@ def check_password(pw: str, hashed: str) -> bool:
     return bcrypt.checkpw(pw.encode(), hashed.encode())
 
 
-# Checked against when the email is unknown, so both login failures take the same bcrypt time
-# and response timing can't reveal which emails have accounts.
+
 _DUMMY_HASH = hash_password("timing-equaliser-not-a-real-password")
 
 
